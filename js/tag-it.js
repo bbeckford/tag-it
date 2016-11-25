@@ -30,6 +30,7 @@
         options: {
             allowDuplicates   : false,
             caseSensitive     : true,
+            fromAutocompleteOnly : false,
             fieldName         : 'tags',
             placeholderText   : null,   // Sets `placeholder` attr on input field.
             readOnly          : false,  // Disables editing.
@@ -50,6 +51,8 @@
 
             // When enabled, quotes are unneccesary for inputting multi-word tags.
             allowSpaces: false,
+            // When enabled, comma key won't trigger completion of a tag
+            allowCommas: false,
 
             // The below options are for using a single field instead of several
             // for our form values.
@@ -199,10 +202,13 @@
                     var node = $(this.options.singleFieldNode);
                     var tags = node.val().split(this.options.singleFieldDelimiter);
                     node.val('');
+                    $tagListChildren = this.tagList.children('li').not('.tagit-new');
                     $.each(tags, function(index, tag) {
-                        that.createTag(tag, null, true);
+                        var label = $tagListChildren.eq(index).text();
+                        that.createTag({value: tag, label: label}, null, true);
                         addedExistingFromSingleFieldNode = true;
                     });
+                    $tagListChildren.remove();
                 } else {
                     // Create our single field input after our list.
                     this.options.singleFieldNode = $('<input type="hidden" style="display:none;" value="" name="' + this.options.fieldName + '" />');
@@ -240,50 +246,57 @@
                     // except when there is an open quote or if setting allowSpaces = true.
                     // Tab will also create a tag, unless the tag input is empty,
                     // in which case it isn't caught.
-                    if (
-                        (event.which === $.ui.keyCode.COMMA && event.shiftKey === false) ||
-                        event.which === $.ui.keyCode.ENTER ||
-                        (
-                            event.which == $.ui.keyCode.TAB &&
-                            that.tagInput.val() !== ''
-                        ) ||
-                        (
-                            event.which == $.ui.keyCode.SPACE &&
-                            that.options.allowSpaces !== true &&
-                            (
-                                $.trim(that.tagInput.val()).replace( /^s*/, '' ).charAt(0) != '"' ||
-                                (
-                                    $.trim(that.tagInput.val()).charAt(0) == '"' &&
-                                    $.trim(that.tagInput.val()).charAt($.trim(that.tagInput.val()).length - 1) == '"' &&
-                                    $.trim(that.tagInput.val()).length - 1 !== 0
-                                )
-                            )
-                        )
-                    ) {
-                        // Enter submits the form if there's no text in the input.
-                        if (!(event.which === $.ui.keyCode.ENTER && that.tagInput.val() === '')) {
-                            event.preventDefault();
-                        }
+                    if(!that.options.fromAutocompleteOnly)
+                    {
+	                    if (
+	                        ((event.which === $.ui.keyCode.COMMA && that.options.allowCommas == false) && event.shiftKey === false) ||
+	                        event.which === $.ui.keyCode.ENTER ||
+	                        (
+	                            event.which == $.ui.keyCode.TAB &&
+	                            that.tagInput.val() !== ''
+	                        ) ||
+	                        (
+	                            event.which == $.ui.keyCode.SPACE &&
+	                            that.options.allowSpaces !== true &&
+	                            (
+	                                $.trim(that.tagInput.val()).replace( /^s*/, '' ).charAt(0) != '"' ||
+	                                (
+	                                    $.trim(that.tagInput.val()).charAt(0) == '"' &&
+	                                    $.trim(that.tagInput.val()).charAt($.trim(that.tagInput.val()).length - 1) == '"' &&
+	                                    $.trim(that.tagInput.val()).length - 1 !== 0
+	                                )
+	                            )
+	                        )
+	                    ) {
+	                        // Enter submits the form if there's no text in the input.
+	                        if (!(event.which === $.ui.keyCode.ENTER && that.tagInput.val() === '')) {
+	                            event.preventDefault();
+	                        }
 
-                        // Autocomplete will create its own tag from a selection and close automatically.
-                        if (!(that.options.autocomplete.autoFocus && that.tagInput.data('autocomplete-open'))) {
-                            that.tagInput.autocomplete('close');
-                            that.createTag(that._cleanedInput());
-                        }
-                    }
+	                        // Autocomplete will create its own tag from a selection and close automatically.
+	                        if (!(that.options.autocomplete.autoFocus && that.tagInput.data('autocomplete-open'))) {
+	                            that.tagInput.autocomplete('close');
+	                            that.createTag(that._cleanedInput());
+	                        }
+	                    }
+	                }
                 }).blur(function(e){
-                    // Create a tag when the element loses focus.
-                    // If autocomplete is enabled and suggestion was clicked, don't add it.
-                    if (!that.tagInput.data('autocomplete-open')) {
-                        that.createTag(that._cleanedInput());
-                    }
+
+                	if(!that.options.fromAutocompleteOnly)
+                	{
+	                    // Create a tag when the element loses focus.
+	                    // If autocomplete is enabled and suggestion was clicked, don't add it.
+	                    if (!that.tagInput.data('autocomplete-open')) {
+	                        that.createTag(that._cleanedInput());
+	                    }
+	                }
                 });
 
             // Autocomplete.
             if (this.options.availableTags || this.options.tagSource || this.options.autocomplete.source) {
                 var autocompleteOptions = {
                     select: function(event, ui) {
-                        that.createTag(ui.item.value);
+                        that.createTag(ui.item);
                         // Preventing the tag input to be updated with the chosen value.
                         return false;
                     }
@@ -439,18 +452,27 @@
         createTag: function(value, additionalClass, duringInitialization) {
             var that = this;
 
+            var labelText = value;
+
+            if(typeof value === 'object')
+            {
+            	labelText = value.label;
+            	value = value.value;
+            }
+
+            labelText = $.trim(labelText);
             value = $.trim(value);
 
             if(this.options.preprocessTag) {
-                value = this.options.preprocessTag(value);
+                labelText = this.options.preprocessTag(labelText);
             }
 
-            if (value === '') {
+            if (labelText === '') {
                 return false;
             }
 
-            if (!this.options.allowDuplicates && !this._isNew(value)) {
-                var existingTag = this._findTagByLabel(value);
+            if (!this.options.allowDuplicates && !this._isNew(labelText)) {
+                var existingTag = this._findTagByLabel(labelText);
                 if (this._trigger('onTagExists', null, {
                     existingTag: existingTag,
                     duringInitialization: duringInitialization
@@ -467,7 +489,7 @@
                 return false;
             }
 
-            var label = $(this.options.onTagClicked ? '<a class="tagit-label"></a>' : '<span class="tagit-label"></span>').text(value);
+            var label = $(this.options.onTagClicked ? '<a class="tagit-label"></a>' : '<span class="tagit-label"></span>').text(labelText);
 
             // Create tag.
             var tag = $('<li></li>')
@@ -494,7 +516,7 @@
 
             // Unless options.singleField is set, each tag has a hidden input field inline.
             if (!this.options.singleField) {
-                var escapedValue = label.html();
+                var escapedValue = value;
                 tag.append('<input type="hidden" value="' + escapedValue + '" name="' + this.options.fieldName + '" class="tagit-hidden-field" />');
             }
 
@@ -588,4 +610,3 @@
 
     });
 })(jQuery);
-
